@@ -1,0 +1,43 @@
+# v로 시작하는 태그를 push 하면, GitHub이 깨끗한 Windows VM에서
+# 테스트 → 빌드 → Release 첨부까지 대신 해준다.
+#
+#   git tag v1.0.0
+#   git push origin v1.0.0
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write        # Release 를 만들려면 저장소 쓰기 권한이 필요하다
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: 소스 내려받기
+        uses: actions/checkout@v4
+
+      - name: .NET 8 SDK 설치
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # 테스트가 실패하면 여기서 멈춘다. 깨진 채로 배포되는 일이 없다.
+      - name: 좌표 계산 검증
+        run: dotnet run --project tests/GeometryTests -c Release
+
+      - name: 단일 exe 빌드
+        run: dotnet publish src/hwpPzWall -c Release -o dist
+
+      - name: 빌드 결과 확인
+        run: Get-ChildItem dist | Select-Object Name, Length
+
+      - name: Release 만들고 exe 첨부
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" dist/hwpPzWall.exe --title "hwpPzWall ${{ github.ref_name }}" --generate-notes
